@@ -107,9 +107,17 @@ class MobileScannerController extends ValueNotifier<MobileScannerState> {
   /// a [MobileScannerBarcodeException] error is emitted to the stream.
   Stream<BarcodeCapture> get barcodes => _barcodesController.stream;
 
+  /// Get the stream of brightness changes.
+  Stream<double> get brightness => _brightnessController.stream;
+
+  /// The internal brightness controller, that listens for brightness changes.
+  final StreamController<double> _brightnessController =
+      StreamController.broadcast();
+
   StreamSubscription<BarcodeCapture?>? _barcodesSubscription;
   StreamSubscription<TorchState>? _torchStateSubscription;
   StreamSubscription<double>? _zoomScaleSubscription;
+  StreamSubscription<double>? _brightnessSubscription;
 
   bool _isDisposed = false;
 
@@ -117,10 +125,12 @@ class MobileScannerController extends ValueNotifier<MobileScannerState> {
     _barcodesSubscription?.cancel();
     _torchStateSubscription?.cancel();
     _zoomScaleSubscription?.cancel();
+    _brightnessSubscription?.cancel();
 
     _barcodesSubscription = null;
     _torchStateSubscription = null;
     _zoomScaleSubscription = null;
+    _brightnessSubscription = null;
   }
 
   void _setupListeners() {
@@ -160,6 +170,16 @@ class MobileScannerController extends ValueNotifier<MobileScannerState> {
       }
 
       value = value.copyWith(zoomScale: zoomScale);
+    });
+
+    _brightnessSubscription = MobileScannerPlatform
+        .instance.brightnessStateStream
+        .listen((double brightness) {
+      if (_isDisposed) {
+        return;
+      }
+
+      _brightnessController.add(brightness);
     });
   }
 

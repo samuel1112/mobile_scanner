@@ -44,6 +44,11 @@ abstract class MobileScannerPlatform extends PlatformInterface {
     throw UnimplementedError('zoomScaleStateStream has not been implemented.');
   }
 
+  /// Get the stream of brightness changes.
+  Stream<double> get brightnessStateStream {
+    throw UnimplementedError('brightnessStateStream has not been implemented.');
+  }
+
   /// Analyze a local image file for barcodes.
   ///
   /// The [path] is the path to the file on disk.

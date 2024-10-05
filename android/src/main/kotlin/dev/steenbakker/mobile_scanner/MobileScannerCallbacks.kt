@@ -8,4 +8,5 @@ typealias AnalyzerSuccessCallback = (barcodes: List<Map<String, Any?>>?) -> Unit
 typealias MobileScannerErrorCallback = (error: String) -> Unit
 typealias TorchStateCallback = (state: Int) -> Unit
 typealias ZoomScaleStateCallback = (zoomScale: Double) -> Unit
+typealias BrightnessChangeCallback = (brightness: Double) -> Unit
 typealias MobileScannerStartedCallback = (parameters: MobileScannerStartParameters) -> Unit

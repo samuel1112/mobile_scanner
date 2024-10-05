@@ -82,6 +82,10 @@ class MobileScannerHandler(
         barcodeHandler.publishEvent(mapOf("name" to "zoomScaleState", "data" to zoomScale))
     }
 
+    private val brightnessChangeCallback: BrightnessChangeCallback = { brightness ->
+        barcodeHandler.publishEvent(mapOf("name" to "brightnessChange", "data" to brightness))
+    }
+
     init {
         methodChannel = MethodChannel(binaryMessenger,
             "dev.steenbakker.mobile_scanner/scanner/method")
@@ -168,6 +172,7 @@ class MobileScannerHandler(
             detectionSpeed,
             torchStateCallback,
             zoomScaleStateCallback,
+            brightnessChangeCallback,
             mobileScannerStartedCallback = {
                 Handler(Looper.getMainLooper()).post {
                     result.success(mapOf(

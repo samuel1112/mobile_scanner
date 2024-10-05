@@ -58,11 +58,14 @@ public class MobileScanner: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
     
     public var timeoutSeconds: Double = 0
 
-    init(registry: FlutterTextureRegistry?, mobileScannerCallback: @escaping MobileScannerCallback, torchModeChangeCallback: @escaping TorchModeChangeCallback, zoomScaleChangeCallback: @escaping ZoomScaleChangeCallback) {
+    private var brightnessChangeCallback: ((Double) -> Void)?
+
+    init(registry: FlutterTextureRegistry?, mobileScannerCallback: @escaping MobileScannerCallback, torchModeChangeCallback: @escaping TorchModeChangeCallback, zoomScaleChangeCallback: @escaping ZoomScaleChangeCallback, brightnessChangeCallback: @escaping (Double) -> Void) {
         self.registry = registry
         self.mobileScannerCallback = mobileScannerCallback
         self.torchModeChangeCallback = torchModeChangeCallback
         self.zoomScaleChangeCallback = zoomScaleChangeCallback
+        self.brightnessChangeCallback = brightnessChangeCallback
         super.init()
     }
 
@@ -166,6 +169,38 @@ public class MobileScanner: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
                 mobileScannerCallback(barcodes, error, ciImage)
             }
         }
+
+        // Calculate brightness
+        if let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) {
+            let brightness = calculateBrightness(from: imageBuffer)
+            DispatchQueue.main.async {
+                self.brightnessChangeCallback?(brightness)
+            }
+        }
+    }
+
+    private func calculateBrightness(from imageBuffer: CVImageBuffer) -> Double {
+        CVPixelBufferLockBaseAddress(imageBuffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(imageBuffer, .readOnly) }
+
+        let width = CVPixelBufferGetWidth(imageBuffer)
+        let height = CVPixelBufferGetHeight(imageBuffer)
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(imageBuffer)
+        let baseAddress = CVPixelBufferGetBaseAddress(imageBuffer)
+
+        var totalBrightness: Double = 0
+        for y in 0..<height {
+            let rowStart = baseAddress!.advanced(by: y * bytesPerRow)
+            for x in 0..<width {
+                let pixel = rowStart.advanced(by: x * 4)
+                let r = Double(pixel.load(as: UInt8.self))
+                let g = Double(pixel.load(fromByteOffset: 1, as: UInt8.self))
+                let b = Double(pixel.load(fromByteOffset: 2, as: UInt8.self))
+                totalBrightness += (0.299 * r + 0.587 * g + 0.114 * b) / 255.0
+            }
+        }
+
+        return totalBrightness / Double(width * height)
     }
 
     /// Start scanning for barcodes
@@ -485,4 +520,3 @@ public class MobileScanner: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
         var textureId: Int64 = 0
     }
 }
-

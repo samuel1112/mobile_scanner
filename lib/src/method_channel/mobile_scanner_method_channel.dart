@@ -165,6 +165,13 @@ class MethodChannelMobileScanner extends MobileScannerPlatform {
   }
 
   @override
+  Stream<double> get brightnessStateStream {
+    return eventsStream
+        .where((event) => event['name'] == 'brightnessChange')
+        .map((event) => event['data'] as double? ?? 0.0);
+  }
+
+  @override
   Future<BarcodeCapture?> analyzeImage(
     String path, {
     List<BarcodeFormat> formats = const <BarcodeFormat>[],

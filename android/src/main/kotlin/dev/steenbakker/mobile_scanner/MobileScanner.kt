@@ -3,8 +3,10 @@ package dev.steenbakker.mobile_scanner
 import android.app.Activity
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.ImageFormat
 import android.graphics.Matrix
 import android.graphics.Rect
+import android.graphics.YuvImage
 import android.hardware.display.DisplayManager
 import android.net.Uri
 import android.os.Build
@@ -61,6 +63,8 @@ class MobileScanner(
     private var detectionSpeed: DetectionSpeed = DetectionSpeed.NO_DUPLICATES
     private var detectionTimeout: Long = 250
     private var returnImage = false
+
+    private var brightnessChangeCallback: BrightnessChangeCallback? = null
 
     companion object {
         /**
@@ -157,6 +161,10 @@ class MobileScanner(
                 scannerTimeout = false
             }, detectionTimeout)
         }
+
+        // Calculate and report brightness
+        val brightness = calculateBrightness(imageProxy)
+        brightnessChangeCallback?.invoke(brightness)
     }
 
     private fun rotateBitmap(bitmap: Bitmap, degrees: Float): Bitmap {
@@ -224,6 +232,25 @@ class MobileScanner(
         return targetResolution
     }
 
+    private fun calculateBrightness(imageProxy: ImageProxy): Double {
+        val yBuffer = imageProxy.planes[0].buffer
+        val ySize = yBuffer.remaining()
+        
+        var sum = 0L
+        var samplesCount = 0
+        
+        // Sample every 4th pixel to improve performance
+        for (i in 0 until ySize step 4) {
+            sum += yBuffer.get(i).toInt() and 0xFF
+            samplesCount++
+        }
+        
+        // Reset buffer position to not affect other operations
+        yBuffer.rewind()
+        
+        return sum.toDouble() / (samplesCount * 255.0)
+    }
+
     /**
      * Start barcode scanning by initializing the camera and barcode scanner.
      */
@@ -236,6 +263,7 @@ class MobileScanner(
         detectionSpeed: DetectionSpeed,
         torchStateCallback: TorchStateCallback,
         zoomScaleStateCallback: ZoomScaleStateCallback,
+        brightnessChangeCallback: BrightnessChangeCallback,
         mobileScannerStartedCallback: MobileScannerStartedCallback,
         mobileScannerErrorCallback: (exception: Exception) -> Unit,
         detectionTimeout: Long,
@@ -245,6 +273,7 @@ class MobileScanner(
         this.detectionSpeed = detectionSpeed
         this.detectionTimeout = detectionTimeout
         this.returnImage = returnImage
+        this.brightnessChangeCallback = brightnessChangeCallback
 
         if (camera?.cameraInfo != null && preview != null && textureEntry != null) {
             mobileScannerErrorCallback(AlreadyStarted())
