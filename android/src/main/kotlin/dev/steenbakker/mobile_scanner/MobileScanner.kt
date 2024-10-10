@@ -124,11 +124,7 @@ class MobileScanner(
                 }
 
                 if (!returnImage) {
-                    mobileScannerCallback(
-                        barcodeMap,
-                        null,
-                        mediaImage.width,
-                        mediaImage.height)
+                    mobileScannerCallback(barcodeMap, null, null, null)
                     return@addOnSuccessListener
                 }
 
