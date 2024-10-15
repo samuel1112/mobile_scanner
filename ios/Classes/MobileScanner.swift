@@ -523,29 +523,28 @@ public class MobileScanner: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
 
     func attemptVisionQRCodeDetection(image: UIImage, callback: @escaping VisionQRCodeDetectionCallback) {
         guard let cgImage = image.cgImage else {
-            callback(nil, NSError(domain: "VisionQRCodeDetection", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to get CGImage"]))
+            callback(nil, nil)
             return
         }
-        
-        let request = VNDetectBarcodesRequest { request, error in
-            if let error = error {
-                callback(nil, nil)
-                return
+        do {
+            let request = VNDetectBarcodesRequest { request, error in
+                if let error = error {
+                    callback(nil, nil)
+                    return
+                }
+                
+                guard let barcodes: [VNBarcodeObservation] = request.results as? [VNBarcodeObservation] else {
+                    callback(nil, nil)
+                    return
+                }
+                if !barcodes.isEmpty {
+                    callback(barcodes, nil)
+                } else {
+                    callback(nil, nil)
+                }
             }
             
-            guard let barcodes: [VNBarcodeObservation] = request.results as? [VNBarcodeObservation] else {
-                callback(nil, nil)
-                return
-            }
-            if !barcodes.isEmpty {
-                callback(barcodes, nil)
-            } else {
-                callback(nil, nil)
-            }
-        }
-        
-        let handler = VNImageRequestHandler(cgImage: cgImage, orientation: .up, options: [:])
-        do {
+            let handler = VNImageRequestHandler(cgImage: cgImage, orientation: .up, options: [:])
             try handler.perform([request])
         } catch {
             callback(nil, error)
