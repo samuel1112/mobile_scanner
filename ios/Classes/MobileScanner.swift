@@ -10,10 +10,12 @@ import Flutter
 import AVFoundation
 import MLKitVision
 import MLKitBarcodeScanning
+import Vision
 
 typealias MobileScannerCallback = ((Array<Barcode>?, Error?, UIImage) -> ())
 typealias TorchModeChangeCallback = ((Int?) -> ())
 typealias ZoomScaleChangeCallback = ((Double?) -> ())
+typealias VisionQRCodeDetectionCallback = (([VNBarcodeObservation]?, Error?) -> ())
 
 public class MobileScanner: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, FlutterTexture {
     /// Capture session of the camera
@@ -510,14 +512,44 @@ public class MobileScanner: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
                     let nextProcessedImage = imageProcessingSteps[stepIndex + 1](image)
                     attemptScan(with: nextProcessedImage, stepIndex: stepIndex + 1)
                 } else {
-                    // 所有尝试都失败
-                    callback(nil, error)
+                    callback(nil, nil)
                 }
             }
         }
         
         // 开始第一次尝试，使用原始图像
         attemptScan(with: image, stepIndex: 0)
+    }
+
+    func attemptVisionQRCodeDetection(image: UIImage, callback: @escaping VisionQRCodeDetectionCallback) {
+        guard let cgImage = image.cgImage else {
+            callback(nil, NSError(domain: "VisionQRCodeDetection", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to get CGImage"]))
+            return
+        }
+        
+        let request = VNDetectBarcodesRequest { request, error in
+            if let error = error {
+                callback(nil, nil)
+                return
+            }
+            
+            guard let barcodes: [VNBarcodeObservation] = request.results as? [VNBarcodeObservation] else {
+                callback(nil, nil)
+                return
+            }
+            if !barcodes.isEmpty {
+                callback(barcodes, nil)
+            } else {
+                callback(nil, nil)
+            }
+        }
+        
+        let handler = VNImageRequestHandler(cgImage: cgImage, orientation: .up, options: [:])
+        do {
+            try handler.perform([request])
+        } catch {
+            callback(nil, error)
+        }
     }
 
     var barcodesString: Array<String?>?

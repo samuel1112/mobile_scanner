@@ -267,7 +267,7 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin {
             return
         }
 
-        mobileScanner.analyzeImage(image: uiImage!, position: AVCaptureDevice.Position.back,
+        self.mobileScanner.analyzeImage(image: uiImage!, position: AVCaptureDevice.Position.back,
                                    barcodeScannerOptions: scannerOptions, callback: { barcodes, error in
             if error != nil {
                 DispatchQueue.main.async {
@@ -280,10 +280,36 @@ public class MobileScannerPlugin: NSObject, FlutterPlugin {
             }
             
             if (barcodes == nil || barcodes!.isEmpty) {
-                DispatchQueue.main.async {
-                    result(nil)
-                }
-                
+                self.mobileScanner.attemptVisionQRCodeDetection(image: uiImage!, callback: { barcodes, error in
+                    if error != nil {
+                        result(FlutterError(code: MobileScannerErrorCodes.BARCODE_ERROR,
+                                        message: error?.localizedDescription,
+                                        details: nil))
+                        return
+                    }
+
+                    if(barcodes == nil || barcodes!.isEmpty) {
+                        result(nil)
+                        return
+                    }
+
+                    let barcodesData = barcodes!.compactMap { barcode -> [String: Any]? in
+                        guard let payloadString = barcode.payloadStringValue else {
+                            return nil
+                        }
+                        return [
+                            "format": BarcodeFormat.qrCode.rawValue,
+                            "rawValue": payloadString,
+                            "displayValue": payloadString,
+                            "corners": []
+                        ]
+                    }
+                    
+                    result([
+                        "name": "barcode",
+                        "data": barcodesData,
+                    ])
+                })
                 return
             }
             
