@@ -477,52 +477,47 @@ public class MobileScanner: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
         processedImage = processedImage.denoise()
         // 锐化
         processedImage = processedImage.sharpen()
-        // 调整分辨率
-        processedImage = processedImage.resize(to: CGSize(width: 1920, height: 1920))
         return processedImage
     }
 
     /// Analyze a single image
     func analyzeImage(image: UIImage, position: AVCaptureDevice.Position,
                       barcodeScannerOptions: BarcodeScannerOptions?, callback: @escaping BarcodeScanningCallback) {
-        // 预处理图像
-        let processedImage = preProcessImage(image)
-        
-        // 创建 VisionImage
-        let visionImage = VisionImage(image: processedImage)
-        visionImage.orientation = imageOrientation(
-            deviceOrientation: UIDevice.current.orientation,
-            defaultOrientation: .portrait,
-            position: position
-        )
-        
         // 创建扫描器
         let scanner: BarcodeScanner = barcodeScannerOptions != nil ? BarcodeScanner.barcodeScanner(options: barcodeScannerOptions!) : BarcodeScanner.barcodeScanner()
         
-        // 尝试多次扫描
-        let maxAttempts = 3
-        var currentAttempt = 0
+        // 定义三种不同的图像处理方式
+        let imageProcessingSteps: [(UIImage) -> UIImage] = [
+            { $0 }, // 原始图像
+            { self.preProcessImage($0) }, // 预处理图像
+            { self.preProcessImage($0).resize(to: CGSize(width: 1920, height: 1920)) } // 预处理并调整分辨率
+        ]
         
-        func attemptScan() {
-            currentAttempt += 1
+        func attemptScan(with processedImage: UIImage, stepIndex: Int) {
+            let visionImage = VisionImage(image: processedImage)
+            visionImage.orientation = imageOrientation(
+                deviceOrientation: UIDevice.current.orientation,
+                defaultOrientation: .portrait,
+                position: position
+            )
+            
             scanner.process(visionImage) { barcodes, error in
                 if let barcodes = barcodes, !barcodes.isEmpty {
                     // 成功识别
                     callback(barcodes, nil)
-                } else if currentAttempt < maxAttempts {
-                    // 重试
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        attemptScan()
-                    }
+                } else if stepIndex < imageProcessingSteps.count - 1 {
+                    // 尝试下一种图像处理方式
+                    let nextProcessedImage = imageProcessingSteps[stepIndex + 1](image)
+                    attemptScan(with: nextProcessedImage, stepIndex: stepIndex + 1)
                 } else {
                     // 所有尝试都失败
-                    // callback(nil, error ?? NSError(domain: "BarcodeScanning", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to detect barcode after multiple attempts"]))
-                    callback(barcodes, error)
+                    callback(nil, error)
                 }
             }
         }
         
-        attemptScan()
+        // 开始第一次尝试，使用原始图像
+        attemptScan(with: image, stepIndex: 0)
     }
 
     var barcodesString: Array<String?>?
