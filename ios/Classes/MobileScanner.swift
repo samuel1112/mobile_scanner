@@ -466,19 +466,63 @@ public class MobileScanner: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
         }
     }
 
+    func preProcessImage(_ image: UIImage) -> UIImage {
+        // 转换为灰度图像
+        var processedImage = image.convertToGrayscale()
+        // 增强对比度
+        processedImage = processedImage.enhanceContrast()
+        // 应用自适应阈值
+        processedImage = processedImage.applyAdaptiveThreshold()
+        // 去噪
+        processedImage = processedImage.denoise()
+        // 锐化
+        processedImage = processedImage.sharpen()
+        // 调整分辨率
+        processedImage = processedImage.resize(to: CGSize(width: 1920, height: 1920))
+        return processedImage
+    }
+
     /// Analyze a single image
     func analyzeImage(image: UIImage, position: AVCaptureDevice.Position,
                       barcodeScannerOptions: BarcodeScannerOptions?, callback: @escaping BarcodeScanningCallback) {
-        let image = VisionImage(image: image)
-        image.orientation = imageOrientation(
+        // 预处理图像
+        let processedImage = preProcessImage(image)
+        
+        // 创建 VisionImage
+        let visionImage = VisionImage(image: processedImage)
+        visionImage.orientation = imageOrientation(
             deviceOrientation: UIDevice.current.orientation,
             defaultOrientation: .portrait,
             position: position
         )
         
+        // 创建扫描器
         let scanner: BarcodeScanner = barcodeScannerOptions != nil ? BarcodeScanner.barcodeScanner(options: barcodeScannerOptions!) : BarcodeScanner.barcodeScanner()
-
-        scanner.process(image, completion: callback)
+        
+        // 尝试多次扫描
+        let maxAttempts = 3
+        var currentAttempt = 0
+        
+        func attemptScan() {
+            currentAttempt += 1
+            scanner.process(visionImage) { barcodes, error in
+                if let barcodes = barcodes, !barcodes.isEmpty {
+                    // 成功识别
+                    callback(barcodes, nil)
+                } else if currentAttempt < maxAttempts {
+                    // 重试
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        attemptScan()
+                    }
+                } else {
+                    // 所有尝试都失败
+                    // callback(nil, error ?? NSError(domain: "BarcodeScanning", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to detect barcode after multiple attempts"]))
+                    callback(barcodes, error)
+                }
+            }
+        }
+        
+        attemptScan()
     }
 
     var barcodesString: Array<String?>?
@@ -518,5 +562,90 @@ public class MobileScanner: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
         var height: Double = 0.0
         var currentTorchState: Int = -1
         var textureId: Int64 = 0
+    }
+}
+
+extension UIImage {
+    func convertToGrayscale() -> UIImage {
+        let context = CIContext(options: nil)
+        guard let currentFilter = CIFilter(name: "CIPhotoEffectMono") else { return self }
+        currentFilter.setValue(CIImage(image: self), forKey: kCIInputImageKey)
+        if let output = currentFilter.outputImage,
+           let cgImage = context.createCGImage(output, from: output.extent) {
+            return UIImage(cgImage: cgImage)
+        }
+        return self
+    }
+    
+    func enhanceContrast() -> UIImage {
+        guard let currentFilter = CIFilter(name: "CIColorControls") else { return self }
+        currentFilter.setValue(CIImage(image: self), forKey: kCIInputImageKey)
+        currentFilter.setValue(1.1, forKey: kCIInputContrastKey)
+        currentFilter.setValue(0.1, forKey: kCIInputBrightnessKey)
+        if let output = currentFilter.outputImage,
+           let cgImage = CIContext(options: nil).createCGImage(output, from: output.extent) {
+            return UIImage(cgImage: cgImage)
+        }
+        return self
+    }
+    
+    func applyAdaptiveThreshold() -> UIImage {
+        // 这里使用 Core Image 的 CIColorThreshold 滤镜作为示例
+        // 实际应用中可能需要更复杂的自适应阈值算法
+        guard let currentFilter = CIFilter(name: "CIColorThreshold") else { return self }
+        currentFilter.setValue(CIImage(image: self), forKey: kCIInputImageKey)
+        currentFilter.setValue(0.5, forKey: "inputThreshold")
+        if let output = currentFilter.outputImage,
+           let cgImage = CIContext(options: nil).createCGImage(output, from: output.extent) {
+            return UIImage(cgImage: cgImage)
+        }
+        return self
+    }
+    
+    func denoise() -> UIImage {
+        guard let currentFilter = CIFilter(name: "CINoiseReduction") else { return self }
+        currentFilter.setValue(CIImage(image: self), forKey: kCIInputImageKey)
+        currentFilter.setValue(0.02, forKey: "inputNoiseLevel")
+        currentFilter.setValue(0.40, forKey: "inputSharpness")
+        if let output = currentFilter.outputImage,
+           let cgImage = CIContext(options: nil).createCGImage(output, from: output.extent) {
+            return UIImage(cgImage: cgImage)
+        }
+        return self
+    }
+    
+    func sharpen() -> UIImage {
+        guard let currentFilter = CIFilter(name: "CISharpenLuminance") else { return self }
+        currentFilter.setValue(CIImage(image: self), forKey: kCIInputImageKey)
+        currentFilter.setValue(0.5, forKey: "inputSharpness")
+        if let output = currentFilter.outputImage,
+           let cgImage = CIContext(options: nil).createCGImage(output, from: output.extent) {
+            return UIImage(cgImage: cgImage)
+        }
+        return self
+    }
+
+    func resize(to targetSize: CGSize) -> UIImage {
+        let widthRatio  = targetSize.width  / size.width
+        let heightRatio = targetSize.height / size.height
+        
+        // 使用较小的比率来确保图像适应目标大小
+        let scaleFactor = min(widthRatio, heightRatio)
+        
+        let scaledWidth  = size.width * scaleFactor
+        let scaledHeight = size.height * scaleFactor
+        let targetRect = CGRect(
+            x: (targetSize.width - scaledWidth) / 2,
+            y: (targetSize.height - scaledHeight) / 2,
+            width: scaledWidth,
+            height: scaledHeight
+        )
+        
+        UIGraphicsBeginImageContextWithOptions(targetSize, false, 0)
+        draw(in: targetRect)
+        let newImage = UIGraphicsGetImageFromCurrentImageContext()
+        UIGraphicsEndImageContext()
+        
+        return newImage ?? self
     }
 }
